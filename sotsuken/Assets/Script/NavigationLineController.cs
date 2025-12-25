@@ -1,112 +1,96 @@
 using UnityEngine;
 using UnityEngine.AI;
-using System.Collections.Generic;
+using TMPro;
 
-[RequireComponent(typeof(LineRenderer))]
 public class NavigationLineController : MonoBehaviour
 {
+    [Header("Nav")]
     public Transform player;
-    public List<Transform> destinations;
-    public LayerMask groundLayer;
-    public float lineHeight = 0.15f;
+    public LineRenderer line;
     public float arriveDistance = 1.5f;
 
-    private LineRenderer line;
-    private NavMeshPath path;
+    [Header("Destinations")]
+    public Transform[] destinations;
+    public string[] destinationNames;
 
+    [Header("UI")]
+    public TMP_Text statusText;
+
+    private NavMeshPath path;
     private int currentIndex = 0;
-    private bool navigationEnabled = false;
+    private bool navigationActive = false;
+    private Transform currentDestination;
 
     void Start()
     {
-        line = GetComponent<LineRenderer>();
         path = new NavMeshPath();
+        currentDestination = destinations[currentIndex];
         line.positionCount = 0;
+        UpdateStatusText();
     }
 
     void Update()
     {
-        HandleToggle();
-        HandleDestinationSelect();
+        HandleInput();
 
-        if (!navigationEnabled)
-        {
-            line.positionCount = 0;
+        if (!navigationActive)
             return;
-        }
 
-        UpdateNavigationLine();
-        CheckArrive();
+        UpdatePath();
+
+        float distance = Vector3.Distance(player.position, currentDestination.position);
+        if (distance < arriveDistance)
+        {
+            StopNavigation();
+        }
     }
 
-    // ナビ ON / OFF
-    void HandleToggle()
+    // =========================
+    // 入力処理
+    void HandleInput()
     {
+        // ナビ ON / OFF
         if (Input.GetKeyDown(KeyCode.N))
         {
-            navigationEnabled = !navigationEnabled;
-            Debug.Log("ナビ状態: " + (navigationEnabled ? "ON" : "OFF"));
+            navigationActive = !navigationActive;
 
-            if (!navigationEnabled)
+            if (!navigationActive)
+            {
                 line.positionCount = 0;
+            }
+
+            UpdateStatusText();
         }
-    }
 
-    // 目的地切り替え
-    void HandleDestinationSelect()
-    {
-        if (!navigationEnabled || destinations.Count == 0) return;
-
-        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+        // 目的地切替（ナビOFF中のみ）
+        if (!navigationActive)
         {
-            currentIndex = (currentIndex + 1) % destinations.Count;
-            Debug.Log("目的地: " + destinations[currentIndex].name);
-        }
+            if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                currentIndex = (currentIndex + 1) % destinations.Length;
+                currentDestination = destinations[currentIndex];
+                UpdateStatusText();
+            }
 
-        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
-        {
-            currentIndex--;
-            if (currentIndex < 0) currentIndex = destinations.Count - 1;
-            Debug.Log("目的地: " + destinations[currentIndex].name);
-        }
-    }
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                currentIndex--;
+                if (currentIndex < 0)
+                    currentIndex = destinations.Length - 1;
 
-    void UpdateNavigationLine()
-    {
-        if (player == null || destinations.Count == 0) return;
-
-        if (NavMesh.CalculatePath(
-            player.position,
-            destinations[currentIndex].position,
-            NavMesh.AllAreas,
-            path))
-        {
-            DrawGroundedPath(path);
+                currentDestination = destinations[currentIndex];
+                UpdateStatusText();
+            }
         }
     }
 
-    // ★ 到達判定
-    void CheckArrive()
+    // =========================
+    // 経路更新 & 表示
+    void UpdatePath()
     {
-        float distance = Vector3.Distance(
-            player.position,
-            destinations[currentIndex].position);
+        if (!NavMesh.CalculatePath(player.position, currentDestination.position, NavMesh.AllAreas, path))
+            return;
 
-        if (distance <= arriveDistance)
-        {
-            ForceNavigationOff();
-        }
-    }
-
-    void ForceNavigationOff()
-    {
-        navigationEnabled = false;
-        line.positionCount = 0;
-        Debug.Log("目的地に到達 → ナビOFF");
-    }
-
-    void DrawGroundedPath(NavMeshPath path)
-    {
         if (path.status != NavMeshPathStatus.PathComplete)
         {
             line.positionCount = 0;
@@ -117,21 +101,38 @@ public class NavigationLineController : MonoBehaviour
 
         for (int i = 0; i < path.corners.Length; i++)
         {
-            Vector3 pos = GetGroundPosition(path.corners[i]);
+            Vector3 pos = path.corners[i];
+
+            // 坂でも埋もれないように Raycast
+            if (Physics.Raycast(pos + Vector3.up * 2f, Vector3.down, out RaycastHit hit, 5f))
+            {
+                pos.y = hit.point.y + 0.15f;
+            }
+
             line.SetPosition(i, pos);
         }
     }
 
-    Vector3 GetGroundPosition(Vector3 source)
+    // =========================
+    // ナビ停止
+    void StopNavigation()
     {
-        Ray ray = new Ray(source + Vector3.up * 5f, Vector3.down);
-        RaycastHit hit;
+        navigationActive = false;
+        line.positionCount = 0;
+        UpdateStatusText();
+    }
 
-        if (Physics.Raycast(ray, out hit, 20f, groundLayer))
+    // =========================
+    // UI更新
+    void UpdateStatusText()
+    {
+        if (navigationActive)
         {
-            return hit.point + Vector3.up * lineHeight;
+            statusText.text = $"ナビON → {destinationNames[currentIndex]}";
         }
-
-        return source + Vector3.up * lineHeight;
+        else
+        {
+            statusText.text = $"選択中：{destinationNames[currentIndex]}（Nで開始）";
+        }
     }
 }
