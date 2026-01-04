@@ -128,11 +128,11 @@ public class NavigationLineController : MonoBehaviour
     {
         if (navigationActive)
         {
-            statusText.text = $"ナビON → {destinationNames[currentIndex]}";
+            statusText.text = $"Navi ON → {destinationNames[currentIndex]}";
         }
         else
         {
-            statusText.text = $"選択中：{destinationNames[currentIndex]}（Nで開始）";
+            statusText.text = $"Select：{destinationNames[currentIndex]}（Push to N）";
         }
     }
 }
